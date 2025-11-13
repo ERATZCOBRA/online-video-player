@@ -1,225 +1,200 @@
-import React, { useState, useRef, useEffect } from 'react';
-import ReactPlayer from 'react-player';
-import './App.css';
+import React, { useState, useRef, useEffect, useCallback } from "react";
+import {
+  Play,
+  Pause,
+  SkipBack,
+  SkipForward,
+  Volume2,
+  VolumeX,
+  Music,
+} from "lucide-react";
+import "./App.css";
 
 function App() {
-  const [url, setUrl] = useState('');
-  const [playingUrl, setPlayingUrl] = useState('');
-  const [isFile, setIsFile] = useState(false);
-  const [playing, setPlaying] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const audioRef = useRef(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [volume, setVolume] = useState(0.7);
+  const [isMuted, setIsMuted] = useState(false);
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
-  const playerRef = useRef(null);
-  const videoRef = useRef(null);
-  const containerRef = useRef(null);
-  const progressBarRef = useRef(null);
+  const [currentTime, setCurrentTime] = useState(0);
 
-  const handlePlay = () => {
-    if (!url.trim()) return;
-    setLoading(true);
-    setError('');
-    try {
-      const isDirectFile = /\.(mp4|webm|ogg|m4v|avi|mov|mkv)$/i.test(url);
-      setPlayingUrl(url);
-      setIsFile(isDirectFile);
-      setPlaying(true);
-    } catch {
-      setError('Invalid URL');
-    } finally {
-      setLoading(false);
+  // 🔁 Play/Pause toggle
+  const togglePlayPause = useCallback(() => {
+    if (!audioRef.current) return;
+    if (isPlaying) {
+      audioRef.current.pause();
+    } else {
+      audioRef.current.play();
     }
-  };
+    setIsPlaying(!isPlaying);
+  }, [isPlaying]);
 
-  const handleStop = () => {
-    setPlaying(false);
-    if (isFile && videoRef.current) {
-      videoRef.current.pause();
-      videoRef.current.currentTime = 0;
-    } else if (playerRef.current) {
-      playerRef.current.seekTo(0);
+  // ⏩ Forward 10 seconds
+  const handleForward = useCallback(() => {
+    if (audioRef.current) {
+      audioRef.current.currentTime += 10;
     }
-    setTimeout(() => {
-      setPlayingUrl('');
-      setUrl('');
-      setIsFile(false);
-    }, 200);
-  };
+  }, []);
 
-  const toggleFullscreen = () => {
-    if (!document.fullscreenElement) containerRef.current.requestFullscreen();
-    else document.exitFullscreen();
-  };
-
-  const togglePiP = async () => {
-    if (!videoRef.current) return;
-    try {
-      if (document.pictureInPictureElement) await document.exitPictureInPicture();
-      else await videoRef.current.requestPictureInPicture();
-    } catch (e) {
-      console.error('PiP error:', e);
+  // ⏪ Rewind 10 seconds
+  const handleRewind = useCallback(() => {
+    if (audioRef.current) {
+      audioRef.current.currentTime -= 10;
     }
-  };
+  }, []);
 
-  const handleRewind = () => {
-    if (isFile && videoRef.current) videoRef.current.currentTime -= 5;
-    else playerRef.current?.seekTo(playerRef.current.getCurrentTime() - 5);
-  };
-
-  const handleForward = () => {
-    if (isFile && videoRef.current) videoRef.current.currentTime += 5;
-    else playerRef.current?.seekTo(playerRef.current.getCurrentTime() + 5);
-  };
-
-  const togglePlayPause = () => {
-    if (isFile && videoRef.current) {
-      if (videoRef.current.paused) {
-        videoRef.current.play();
-        setPlaying(true);
-      } else {
-        videoRef.current.pause();
-        setPlaying(false);
-      }
-    } else setPlaying((prev) => !prev);
-  };
-
-  const handleProgress = (e) => {
-    if (isFile) {
-      const p = (e.target.currentTime / e.target.duration) * 100;
-      setProgress(p);
+  // 🔊 Volume toggle
+  const toggleMute = useCallback(() => {
+    if (audioRef.current) {
+      audioRef.current.muted = !isMuted;
+      setIsMuted(!isMuted);
     }
-  };
+  }, [isMuted]);
 
-  const handleDuration = (e) => {
-    if (isFile) setDuration(e.target.duration);
-  };
+  // 🎚️ Progress bar change
+  const handleProgressChange = useCallback((e) => {
+    const value = parseFloat(e.target.value);
+    if (audioRef.current) {
+      audioRef.current.currentTime = value;
+    }
+    setProgress(value);
+  }, []);
 
-  const handleSeek = (clientX) => {
-    if (!progressBarRef.current) return;
-    const rect = progressBarRef.current.getBoundingClientRect();
-    const percent = Math.min(Math.max(0, (clientX - rect.left) / rect.width), 1);
-    const newTime = percent * (isFile ? duration : playerRef.current.getDuration());
+  // ⏱️ Update progress bar while playing
+  const updateProgress = useCallback(() => {
+    if (audioRef.current) {
+      setCurrentTime(audioRef.current.currentTime);
+      setProgress(audioRef.current.currentTime);
+    }
+  }, []);
 
-    setProgress(percent * 100);
-    if (isFile && videoRef.current) videoRef.current.currentTime = newTime;
-    else playerRef.current.seekTo(newTime);
-  };
+  // 📏 Load metadata to set duration
+  const handleLoadedMetadata = useCallback(() => {
+    if (audioRef.current) {
+      setDuration(audioRef.current.duration);
+    }
+  }, []);
 
-  const handleMouseDown = (e) => {
-    handleSeek(e.clientX);
-    const handleMove = (ev) => handleSeek(ev.clientX);
-    const handleUp = () => {
-      window.removeEventListener('mousemove', handleMove);
-      window.removeEventListener('mouseup', handleUp);
-    };
-    window.addEventListener('mousemove', handleMove);
-    window.addEventListener('mouseup', handleUp);
-  };
-
+  // ⌨️ Keyboard shortcuts (spacebar, arrows)
   useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (!playingUrl) return;
-      switch (e.code) {
-        case 'Space':
-          e.preventDefault();
-          togglePlayPause();
-          break;
-        case 'ArrowRight':
-          handleForward();
-          break;
-        case 'ArrowLeft':
-          handleRewind();
-          break;
-        case 'KeyF':
-          toggleFullscreen();
-          break;
-        case 'KeyP':
-          togglePiP();
-          break;
-        default:
-          break;
+    const handleKeyDown = (event) => {
+      if (event.code === "Space") {
+        event.preventDefault();
+        togglePlayPause();
+      } else if (event.code === "ArrowRight") {
+        handleForward();
+      } else if (event.code === "ArrowLeft") {
+        handleRewind();
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [playingUrl, isFile]);
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [togglePlayPause, handleForward, handleRewind]);
+
+  // 🎧 Effect to update volume
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.volume = volume;
+    }
+  }, [volume]);
+
+  const formatTime = (time) => {
+    if (isNaN(time)) return "0:00";
+    const minutes = Math.floor(time / 60);
+    const seconds = Math.floor(time % 60)
+      .toString()
+      .padStart(2, "0");
+    return `${minutes}:${seconds}`;
+  };
 
   return (
-    <div className="app">
-      <div className="player-container" ref={containerRef}>
-        <h1 className="title">Custom Video Player</h1>
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-black flex items-center justify-center p-6">
+      <div className="glass-card w-full max-w-md rounded-2xl p-6 flex flex-col items-center shadow-2xl">
+        <Music className="w-16 h-16 text-indigo-400 mb-4" />
+        <h1 className="text-white text-2xl font-semibold mb-2">
+          Lo-Fi Chill Beats
+        </h1>
+        <p className="text-gray-400 text-sm mb-4">Relax • Focus • Study</p>
 
-        <input
-          type="text"
-          placeholder="Paste a YouTube or direct video URL..."
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
+        <audio
+          ref={audioRef}
+          src="/audio.mp3"
+          onTimeUpdate={updateProgress}
+          onLoadedMetadata={handleLoadedMetadata}
+          onEnded={() => setIsPlaying(false)}
         />
 
-        <div className="buttons">
-          <button onClick={handlePlay}>▶ Play</button>
-          <button onClick={handleStop}>■ Stop</button>
+        {/* Progress bar */}
+        <div className="w-full flex items-center gap-2 mb-4">
+          <span className="text-gray-400 text-xs w-8 text-right">
+            {formatTime(currentTime)}
+          </span>
+          <input
+            type="range"
+            min="0"
+            max={duration}
+            step="0.1"
+            value={progress}
+            onChange={handleProgressChange}
+            className="w-full accent-indigo-500 cursor-pointer"
+          />
+          <span className="text-gray-400 text-xs w-8">
+            {formatTime(duration)}
+          </span>
         </div>
 
-        {loading && <p>Loading...</p>}
-        {error && <p className="error">{error}</p>}
+        {/* Controls */}
+        <div className="flex items-center justify-center gap-6">
+          <button
+            onClick={handleRewind}
+            className="text-gray-300 hover:text-indigo-400 transition"
+          >
+            <SkipBack className="w-6 h-6" />
+          </button>
 
-        {playingUrl && (
-          <div className="video-box">
-            {isFile ? (
-              <video
-                ref={videoRef}
-                src={playingUrl}
-                autoPlay
-                preload="auto"
-                onTimeUpdate={handleProgress}
-                onDurationChange={handleDuration}
-                onPlay={() => setPlaying(true)}
-                onPause={() => setPlaying(false)}
-                style={{ width: '100%', borderRadius: '12px', objectFit: 'contain' }}
-              />
+          <button
+            onClick={togglePlayPause}
+            className="bg-indigo-500 hover:bg-indigo-600 text-white rounded-full p-4 shadow-md transition"
+          >
+            {isPlaying ? (
+              <Pause className="w-6 h-6" />
             ) : (
-              <ReactPlayer
-                ref={playerRef}
-                url={playingUrl}
-                playing={playing}
-                width="100%"
-                height="auto"
-                controls={false}
-                onProgress={(p) => setProgress(p.played * 100)}
-                style={{ borderRadius: '12px' }}
-                config={{
-                  youtube: {
-                    playerVars: {
-                      autoplay: 1,
-                      modestbranding: 1,
-                      rel: 0,
-                      showinfo: 0,
-                    },
-                  },
-                }}
-              />
+              <Play className="w-6 h-6" />
             )}
+          </button>
 
-            {/* ==== CUSTOM PLAYER BAR ==== */}
-            <div className="custom-controls">
-              <button onClick={handleRewind}>⏪</button>
-              <button onClick={togglePlayPause}>{playing ? '⏸' : '▶'}</button>
-              <button onClick={handleForward}>⏩</button>
-              <button onClick={toggleFullscreen}>⛶</button>
-              {isFile && <button onClick={togglePiP}>📺</button>}
+          <button
+            onClick={handleForward}
+            className="text-gray-300 hover:text-indigo-400 transition"
+          >
+            <SkipForward className="w-6 h-6" />
+          </button>
+        </div>
 
-              <div
-                className="progress-bar"
-                ref={progressBarRef}
-                onMouseDown={handleMouseDown}
-              >
-                <div className="progress" style={{ width: `${progress}%` }}></div>
-              </div>
-            </div>
-          </div>
-        )}
+        {/* Volume control */}
+        <div className="flex items-center gap-3 mt-6">
+          <button
+            onClick={toggleMute}
+            className="text-gray-400 hover:text-indigo-400 transition"
+          >
+            {isMuted ? (
+              <VolumeX className="w-5 h-5" />
+            ) : (
+              <Volume2 className="w-5 h-5" />
+            )}
+          </button>
+          <input
+            type="range"
+            min="0"
+            max="1"
+            step="0.01"
+            value={isMuted ? 0 : volume}
+            onChange={(e) => setVolume(parseFloat(e.target.value))}
+            className="w-24 accent-indigo-500 cursor-pointer"
+          />
+        </div>
       </div>
     </div>
   );
