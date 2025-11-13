@@ -20,7 +20,9 @@ function App() {
     setError('');
 
     try {
-      const parsed = new URL(url);
+      // Validate the URL format — throws if invalid
+      new URL(url);
+
       const isDirectFile = /\.(mp4|webm|ogg|m4v|avi|mov|mkv)$/i.test(url);
 
       setPlayingUrl(url);
@@ -51,7 +53,9 @@ function App() {
 
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
-      containerRef.current.requestFullscreen().catch((err) => console.error('Fullscreen error:', err));
+      containerRef.current
+        .requestFullscreen()
+        .catch((err) => console.error('Fullscreen error:', err));
     } else {
       document.exitFullscreen();
     }
@@ -79,7 +83,9 @@ function App() {
         case 'Space':
           e.preventDefault();
           if (isFile && videoRef.current) {
-            videoRef.current.paused ? videoRef.current.play() : videoRef.current.pause();
+            videoRef.current.paused
+              ? videoRef.current.play()
+              : videoRef.current.pause();
           } else {
             setPlaying((prev) => !prev);
           }
